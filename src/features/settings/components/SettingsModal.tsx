@@ -14,7 +14,7 @@ interface SettingsModalProps {
   onClose: () => void;
 }
 
-type Tab = 'Global' | 'Boxing' | 'Kickboxing' | 'Reflex' | 'Iron Pump';
+type Tab = 'Global' | 'Boxing' | 'Kickboxing' | 'Reflex' | 'Iron Pump' | 'Training';
 
 const TAB_DATA: Record<Tab, { icon: any, description: string }> = {
   'Global': { icon: Layout, description: 'Core game behavior and timings.' },
@@ -22,16 +22,17 @@ const TAB_DATA: Record<Tab, { icon: any, description: string }> = {
   'Kickboxing': { icon: Zap, description: 'Pocket-based kick & knee detection.' },
   'Reflex': { icon: Activity, description: 'Obstacle dodge & jump physics.' },
   'Iron Pump': { icon: Dumbbell, description: 'Weight lifting motion arcs.' },
+  'Training': { icon: Target, description: 'Calibration Dashboard to tune your custom moves.' },
 };
 
 export default function SettingsModal({ config, setConfig, onClose }: SettingsModalProps) {
-  const [activeTab, setActiveTab] = useState<Tab>('Global');
+  const [activeTab, setActiveTab] = useState<Tab>('Training');
 
   const handleChange = (key: keyof GameConfig, value: number) => {
     setConfig({ ...config, [key]: value });
   };
 
-  const tabs: Tab[] = ['Global', 'Boxing', 'Kickboxing', 'Reflex', 'Iron Pump'];
+  const tabs: Tab[] = ['Global', 'Boxing', 'Kickboxing', 'Reflex', 'Iron Pump', 'Training'];
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-end md:p-6 bg-black/80 backdrop-blur-md">
@@ -49,7 +50,7 @@ export default function SettingsModal({ config, setConfig, onClose }: SettingsMo
               <Settings2 className="w-6 h-6 text-orange-500" />
             </div>
             <div>
-              <h2 className="text-2xl font-black text-white tracking-tight">SYSTEM CALIBRATION</h2>
+              <h2 className="text-2xl font-bold text-white tracking-tight">SYSTEM CALIBRATION</h2>
               <p className="text-sm text-white/40 font-medium uppercase tracking-widest">Tweak the physics engine</p>
             </div>
           </div>
@@ -228,6 +229,30 @@ export default function SettingsModal({ config, setConfig, onClose }: SettingsMo
                       />
                     </>
                   )}
+
+                  {activeTab === 'Training' && (
+                    <div className="space-y-6">
+                      <div className="p-6 bg-orange-500/10 border border-orange-500/20 rounded-3xl">
+                        <h4 className="text-orange-500 font-bold uppercase tracking-widest mb-2 flex items-center gap-2">
+                          <Activity className="w-5 h-5" />
+                          Calibration Dashboard
+                        </h4>
+                        <p className="text-sm text-white/70">
+                          Use the main menu Calibration option before playing to automatically tune your IMU thresholds for your unique body physics.
+                          The values calibrated during that phase are saved and reflected in the sliders above.
+                        </p>
+                      </div>
+                      <div className="p-6 bg-blue-500/10 border border-blue-500/20 rounded-3xl mt-4">
+                        <h4 className="text-blue-400 font-bold uppercase tracking-widest mb-2 flex items-center gap-2">
+                          <Layout className="w-5 h-5" />
+                          Camera AI Mode
+                        </h4>
+                        <p className="text-sm text-white/70">
+                          If you select the "Web Camera" input option, the thresholds above are ignored. The AI uses its own pre-trained skeleton model to understand your motion in 3D space.
+                        </p>
+                      </div>
+                    </div>
+                  )}
                 </motion.div>
               </AnimatePresence>
             </div>
@@ -268,11 +293,11 @@ function ParameterSlider({
   return (
     <div className="space-y-4 group">
       <div className="flex justify-between items-end">
-        <label className="text-sm font-black text-white/60 uppercase tracking-widest group-hover:text-orange-500 transition-colors">
+        <label className="text-sm font-bold text-white/60 uppercase tracking-widest group-hover:text-orange-500 transition-colors">
           {label}
         </label>
         <div className="text-right">
-          <span className="text-2xl font-black text-white tabular-nums">{value}</span>
+          <span className="text-2xl font-bold text-white tabular-nums">{value}</span>
           <span className="ml-1 text-xs font-bold text-white/30 uppercase">{unit}</span>
         </div>
       </div>
