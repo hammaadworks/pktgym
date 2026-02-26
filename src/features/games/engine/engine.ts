@@ -120,49 +120,104 @@ export function detectMove(
   const peaks = getPeakValues(streamWindow);
   const { maxZ, minZ, maxY, minY, maxX, minX, maxAlpha, maxBeta, maxGamma } = peaks;
 
+  let detectedMove: MoveType = 'none';
+  let triggerReason = '';
+
   switch (mode) {
     case 'shadow_boxing':
-      if (maxBeta > config.HOOK_GYRO_THRESHOLD) return 'hook';
-      if (Math.abs(maxZ) > config.JAB_ACCEL_THRESHOLD || Math.abs(minZ) > config.JAB_ACCEL_THRESHOLD) return 'jab';
-      if (Math.abs(maxX) > config.SLIP_ACCEL_THRESHOLD || Math.abs(minX) > config.SLIP_ACCEL_THRESHOLD) return 'slip';
-      return 'none';
+      if (maxBeta > config.HOOK_GYRO_THRESHOLD) {
+        detectedMove = 'hook';
+        triggerReason = `maxBeta (${maxBeta.toFixed(2)}) > HOOK_GYRO_THRESHOLD (${config.HOOK_GYRO_THRESHOLD.toFixed(2)})`;
+      } else if (Math.abs(maxZ) > config.JAB_ACCEL_THRESHOLD || Math.abs(minZ) > config.JAB_ACCEL_THRESHOLD) {
+        detectedMove = 'jab';
+        triggerReason = `Math.abs(maxZ|minZ) (${Math.max(Math.abs(maxZ), Math.abs(minZ)).toFixed(2)}) > JAB_ACCEL_THRESHOLD (${config.JAB_ACCEL_THRESHOLD.toFixed(2)})`;
+      } else if (Math.abs(maxX) > config.SLIP_ACCEL_THRESHOLD || Math.abs(minX) > config.SLIP_ACCEL_THRESHOLD) {
+        detectedMove = 'slip';
+        triggerReason = `Math.abs(maxX|minX) (${Math.max(Math.abs(maxX), Math.abs(minX)).toFixed(2)}) > SLIP_ACCEL_THRESHOLD (${config.SLIP_ACCEL_THRESHOLD.toFixed(2)})`;
+      }
+      break;
 
     case 'kickboxing':
-      if (maxY > config.KNEE_ACCEL_THRESHOLD) return 'knee';
-      if (minY < config.SPRAWL_ACCEL_THRESHOLD) return 'sprawl';
-      if (maxAlpha > config.FRONT_KICK_GYRO_THRESHOLD) return 'front_kick';
-      return 'none';
+      if (maxY > config.KNEE_ACCEL_THRESHOLD) {
+        detectedMove = 'knee';
+        triggerReason = `maxY (${maxY.toFixed(2)}) > KNEE_ACCEL_THRESHOLD (${config.KNEE_ACCEL_THRESHOLD.toFixed(2)})`;
+      } else if (minY < config.SPRAWL_ACCEL_THRESHOLD) {
+        detectedMove = 'sprawl';
+        triggerReason = `minY (${minY.toFixed(2)}) < SPRAWL_ACCEL_THRESHOLD (${config.SPRAWL_ACCEL_THRESHOLD.toFixed(2)})`;
+      } else if (maxAlpha > config.FRONT_KICK_GYRO_THRESHOLD) {
+        detectedMove = 'front_kick';
+        triggerReason = `maxAlpha (${maxAlpha.toFixed(2)}) > FRONT_KICK_GYRO_THRESHOLD (${config.FRONT_KICK_GYRO_THRESHOLD.toFixed(2)})`;
+      }
+      break;
 
     case 'reflex_ridge':
-      if (maxY > config.JUMP_ACCEL_THRESHOLD) return 'jump';
-      if (minY < config.DUCK_ACCEL_THRESHOLD) return 'duck';
-      if (maxX > config.DODGE_ACCEL_THRESHOLD) return 'dodge_right';
-      if (minX < -config.DODGE_ACCEL_THRESHOLD) return 'dodge_left';
-      return 'none';
+      if (maxY > config.JUMP_ACCEL_THRESHOLD) {
+        detectedMove = 'jump';
+        triggerReason = `maxY (${maxY.toFixed(2)}) > JUMP_ACCEL_THRESHOLD (${config.JUMP_ACCEL_THRESHOLD.toFixed(2)})`;
+      } else if (minY < config.DUCK_ACCEL_THRESHOLD) {
+        detectedMove = 'duck';
+        triggerReason = `minY (${minY.toFixed(2)}) < DUCK_ACCEL_THRESHOLD (${config.DUCK_ACCEL_THRESHOLD.toFixed(2)})`;
+      } else if (maxX > config.DODGE_ACCEL_THRESHOLD) {
+        detectedMove = 'dodge_right';
+        triggerReason = `maxX (${maxX.toFixed(2)}) > DODGE_ACCEL_THRESHOLD (${config.DODGE_ACCEL_THRESHOLD.toFixed(2)})`;
+      } else if (minX < -config.DODGE_ACCEL_THRESHOLD) {
+        detectedMove = 'dodge_left';
+        triggerReason = `minX (${minX.toFixed(2)}) < -DODGE_ACCEL_THRESHOLD (${(-config.DODGE_ACCEL_THRESHOLD).toFixed(2)})`;
+      }
+      break;
 
     case 'iron_pump':
-      if (maxY > config.PRESS_ARC_THRESHOLD) return 'press';
-      if (maxY > config.CURL_ARC_THRESHOLD) return 'curl';
-      return 'none';
+      if (maxY > config.PRESS_ARC_THRESHOLD) {
+        detectedMove = 'press';
+        triggerReason = `maxY (${maxY.toFixed(2)}) > PRESS_ARC_THRESHOLD (${config.PRESS_ARC_THRESHOLD.toFixed(2)})`;
+      } else if (maxY > config.CURL_ARC_THRESHOLD) {
+        detectedMove = 'curl';
+        triggerReason = `maxY (${maxY.toFixed(2)}) > CURL_ARC_THRESHOLD (${config.CURL_ARC_THRESHOLD.toFixed(2)})`;
+      }
+      break;
 
     case 'cardio_core':
-      // Using arbitrary logic mapping for simplicity:
-      // High total acceleration spikes = burpee
-      // Consistent rhythmic Y = run
-      // Deep min Y = squat
-      // Low X/Y but high Z push = pushup
-      if (maxY > config.BURPEE_ACCEL_THRESHOLD && Math.abs(minY) > config.BURPEE_ACCEL_THRESHOLD / 2) return 'burpee';
-      if (maxY > config.RUN_ACCEL_THRESHOLD) return 'run';
-      if (minY < -config.SQUAT_ACCEL_THRESHOLD) return 'squat';
-      if (Math.abs(maxZ) > config.PUSHUP_ACCEL_THRESHOLD) return 'pushup';
-      return 'none';
+      if (maxY > config.BURPEE_ACCEL_THRESHOLD && Math.abs(minY) > config.BURPEE_ACCEL_THRESHOLD / 2) {
+        detectedMove = 'burpee';
+        triggerReason = `maxY (${maxY.toFixed(2)}) > BURPEE_ACCEL_THRESHOLD (${config.BURPEE_ACCEL_THRESHOLD.toFixed(2)}) && Math.abs(minY) > BURPEE_ACCEL_THRESHOLD / 2`;
+      } else if (maxY > config.RUN_ACCEL_THRESHOLD) {
+        detectedMove = 'run';
+        triggerReason = `maxY (${maxY.toFixed(2)}) > RUN_ACCEL_THRESHOLD (${config.RUN_ACCEL_THRESHOLD.toFixed(2)})`;
+      } else if (minY < -config.SQUAT_ACCEL_THRESHOLD) {
+        detectedMove = 'squat';
+        triggerReason = `minY (${minY.toFixed(2)}) < -SQUAT_ACCEL_THRESHOLD (${(-config.SQUAT_ACCEL_THRESHOLD).toFixed(2)})`;
+      } else if (Math.abs(maxZ) > config.PUSHUP_ACCEL_THRESHOLD) {
+        detectedMove = 'pushup';
+        triggerReason = `Math.abs(maxZ) (${Math.abs(maxZ).toFixed(2)}) > PUSHUP_ACCEL_THRESHOLD (${config.PUSHUP_ACCEL_THRESHOLD.toFixed(2)})`;
+      }
+      break;
 
     case 'warmup_core':
-      if (maxBeta > config.ARM_ROTATION_GYRO_THRESHOLD || maxAlpha > config.ARM_ROTATION_GYRO_THRESHOLD) return 'arm_rotation';
-      if (maxGamma > config.WRIST_ROTATION_GYRO_THRESHOLD) return 'wrist_rotation';
-      return 'none';
-
-    default:
-      return 'none';
+      if (maxBeta > config.ARM_ROTATION_GYRO_THRESHOLD || maxAlpha > config.ARM_ROTATION_GYRO_THRESHOLD) {
+        detectedMove = 'arm_rotation';
+        triggerReason = `maxBeta (${maxBeta.toFixed(2)}) or maxAlpha (${maxAlpha.toFixed(2)}) > ARM_ROTATION_GYRO_THRESHOLD (${config.ARM_ROTATION_GYRO_THRESHOLD.toFixed(2)})`;
+      } else if (maxGamma > config.WRIST_ROTATION_GYRO_THRESHOLD) {
+        detectedMove = 'wrist_rotation';
+        triggerReason = `maxGamma (${maxGamma.toFixed(2)}) > WRIST_ROTATION_GYRO_THRESHOLD (${config.WRIST_ROTATION_GYRO_THRESHOLD.toFixed(2)})`;
+      }
+      break;
   }
+
+  if (detectedMove !== 'none') {
+    console.log(
+      `\n================= ACTION DETECTED =================\n` +
+      `  Action:       [ ${detectedMove.toUpperCase()} ]\n` +
+      `  Game Mode:    ${mode}\n` +
+      `  Trigger:      ${triggerReason}\n` +
+      `---------------------------------------------------\n` +
+      `  IMU Peaks:\n` +
+      `    Accel X:    max: ${maxX.toFixed(2).padStart(6)}, min: ${minX.toFixed(2).padStart(6)}\n` +
+      `    Accel Y:    max: ${maxY.toFixed(2).padStart(6)}, min: ${minY.toFixed(2).padStart(6)}\n` +
+      `    Accel Z:    max: ${maxZ.toFixed(2).padStart(6)}, min: ${minZ.toFixed(2).padStart(6)}\n` +
+      `    Gyro:       alpha: ${maxAlpha.toFixed(2).padStart(6)}, beta: ${maxBeta.toFixed(2).padStart(6)}, gamma: ${maxGamma.toFixed(2).padStart(6)}\n` +
+      `===================================================\n`
+    );
+  }
+
+  return detectedMove;
 }

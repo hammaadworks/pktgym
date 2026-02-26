@@ -8,58 +8,14 @@ import { QRCodeSVG } from 'qrcode.react';
 import { IMUData, detectMove, GameMode, GAME_MODES, MoveType, tuneConfigWithCalibration, getPeakValues, DEFAULT_CONFIG, GameConfig } from '@/features/games/engine';
 import { motion, AnimatePresence } from 'framer-motion';
 import SettingsModal from '@/features/settings/components/SettingsModal';
-import { Settings, RefreshCw, Activity, ArrowRight, Zap, Target, Dumbbell, ShieldAlert, Smartphone, Info, Wifi, Volume2, VolumeX, Flame, HeartPulse, CheckCircle2 } from 'lucide-react';
+import CameraView from '../camera/CameraView';
+import { Settings, Camera, RefreshCw, Activity, ArrowRight, Zap, Target, Dumbbell, ShieldAlert, Smartphone, Info, Wifi, Volume2, VolumeX, Flame, HeartPulse, CheckCircle2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { audio } from '@/lib/audio/audio';
 import GameAvatar from './GameAvatar';
 import { useDesktopConnection } from '@/features/connection/hooks/useDesktopConnection';
-
-type ExtendedMode = GameMode | 'power_workout';
-
-const EXTENDED_MODES: Record<ExtendedMode, { name: string; description: string; icon: any; colorClass: string }> = {
-  warmup_core: {
-    name: 'Warmup Core',
-    description: 'Joint mobility & activation.',
-    icon: Flame,
-    colorClass: 'text-yellow-500 bg-yellow-500/10 border-yellow-500/20'
-  },
-  shadow_boxing: {
-    name: 'Shadow Boxing',
-    description: 'Elite hand-eye coordination drills.',
-    icon: Target,
-    colorClass: 'text-blue-500 bg-blue-500/10 border-blue-500/20'
-  },
-  kickboxing: {
-    name: 'Kickboxing',
-    description: 'High-impact lower body power.',
-    icon: ShieldAlert,
-    colorClass: 'text-red-500 bg-red-500/10 border-red-500/20'
-  },
-  reflex_ridge: {
-    name: 'Reflex Ridge',
-    description: 'Dynamic obstacle evasion circuit.',
-    icon: Activity,
-    colorClass: 'text-green-500 bg-green-500/10 border-green-500/20'
-  },
-  iron_pump: {
-    name: 'Iron Pump',
-    description: 'Sustained muscular endurance arcs.',
-    icon: Dumbbell,
-    colorClass: 'text-orange-500 bg-orange-500/10 border-orange-500/20'
-  },
-  cardio_core: {
-    name: 'Cardio Core',
-    description: 'High intensity full-body blasts.',
-    icon: HeartPulse,
-    colorClass: 'text-pink-500 bg-pink-500/10 border-pink-500/20'
-  },
-  power_workout: {
-    name: 'Power Workout',
-    description: 'The ultimate multi-modal challenge.',
-    icon: Zap,
-    colorClass: 'text-purple-500 bg-purple-500/10 border-purple-500/20 shadow-[0_0_40px_rgba(168,85,247,0.2)]'
-  }
-};
+import { ExtendedMode, EXTENDED_MODES } from '../constants';
+import { cameraEngine } from '../camera/CameraEngine';
 
 export default function DesktopGame() {
   const [showSettings, setShowSettings] = useState(false);
@@ -72,6 +28,7 @@ export default function DesktopGame() {
   const [debugData, setDebugData] = useState<any>(null);
 
   // Flow State: 'pairing' -> 'menu' -> 'calibration' -> 'transition' -> 'playing'
+  const [inputType, setInputType] = useState<'imu' | 'camera' | null>(null);
   const [flowState, setFlowState] = useState<'pairing' | 'menu' | 'calibration' | 'transition' | 'playing'>('pairing');
   
   const [selectedMode, setSelectedMode] = useState<ExtendedMode | null>(null);
@@ -135,10 +92,31 @@ export default function DesktopGame() {
   
   // Motion buffer
   const bufferRef = useRef<IMUData[]>([]);
+  const latestCameraPeaksRef = useRef<ReturnType<typeof cameraEngine.getPeaks> | null>(null);
+  const maxCameraPeaksDuringCalibRef = useRef<ReturnType<typeof cameraEngine.getPeaks> | null>(null);
   const isListeningRef = useRef(false);
   const gameLoopRef = useRef<NodeJS.Timeout | null>(null);
   const transitionIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const calibrationIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  
+  const handleCameraPeaks = useCallback((peaks: NonNullable<ReturnType<typeof cameraEngine.getPeaks>>) => {
+     latestCameraPeaksRef.current = peaks;
+     if (isListeningRef.current && flowStateRef.current === 'calibration') {
+        const cp = peaks;
+        const mp = maxCameraPeaksDuringCalibRef.current;
+        if (!mp) {
+           maxCameraPeaksDuringCalibRef.current = { ...cp };
+        } else {
+           maxCameraPeaksDuringCalibRef.current = {
+             shoulderDeltaY: Math.max(Math.abs(mp.shoulderDeltaY), Math.abs(cp.shoulderDeltaY)) * Math.sign(cp.shoulderDeltaY),
+             noseDeltaX: Math.max(Math.abs(mp.noseDeltaX), Math.abs(cp.noseDeltaX)) * Math.sign(cp.noseDeltaX),
+             leftPunchDeltaZ: Math.max(Math.abs(mp.leftPunchDeltaZ), Math.abs(cp.leftPunchDeltaZ)),
+             rightPunchDeltaZ: Math.max(Math.abs(mp.rightPunchDeltaZ), Math.abs(cp.rightPunchDeltaZ)),
+             kneeDeltaY: Math.max(Math.abs(mp.kneeDeltaY), Math.abs(cp.kneeDeltaY)) * Math.sign(cp.kneeDeltaY)
+           };
+        }
+     }
+  }, []);
   
   // Power workout state
   const movesInCurrentMode = useRef(0);
@@ -249,6 +227,19 @@ export default function DesktopGame() {
     if (transitionIntervalRef.current) clearInterval(transitionIntervalRef.current);
   };
 
+  const handleCameraMove = useCallback((move: MoveType) => {
+    if (flowState !== 'playing' || inputType !== 'camera' || targetMove === 'none') return;
+    
+    if (move === targetMove) {
+      if (gameLoopRef.current) clearTimeout(gameLoopRef.current);
+      setScore((s) => s + 100 + (combo * 10));
+      setCombo((c) => c + 1);
+      setFeedback('PERFECT');
+      audio.playPerfect();
+      gameLoopRef.current = setTimeout(nextMove, config.MOVE_INTERVAL_MS);
+    }
+  }, [flowState, inputType, targetMove, combo, config.MOVE_INTERVAL_MS]);
+
   const nextMove = () => {
     if (flowState !== 'playing' || !selectedMode) return;
 
@@ -273,6 +264,17 @@ export default function DesktopGame() {
     bufferRef.current = [];
     
     audio.playCallout();
+    
+    if (inputType === 'camera') {
+      // For camera, we just wait for handleCameraMove to trigger
+      gameLoopRef.current = setTimeout(() => {
+        setCombo(0);
+        setFeedback('MISS');
+        audio.playMiss();
+        gameLoopRef.current = setTimeout(nextMove, config.MOVE_INTERVAL_MS);
+      }, config.LISTENING_WINDOW_MS * 1.5); // Give a bit more time for camera moves
+      return;
+    }
 
     gameLoopRef.current = setTimeout(() => {
       isListeningRef.current = false;
@@ -335,7 +337,7 @@ export default function DesktopGame() {
   );
 
   return (
-    <div className="min-h-screen bg-[#020617] text-white flex flex-col font-sans overflow-hidden selection:bg-orange-500/30 italic">
+    <div className="min-h-screen bg-[#020617] text-white flex flex-col font-sans overflow-hidden selection:bg-orange-500/30">
       {/* Dynamic Immersive Background */}
       <div className="absolute inset-0 bg-[url('data:image/svg+xml,%3Csvg viewBox=%220 0 200 200%22 xmlns=%22http://www.w3.org/2000/svg%22%3E%3Cfilter id=%22noiseFilter%22%3E%3CfeTurbulence type=%22fractalNoise%22 baseFrequency=%220.65%22 numOctaves=%223%22 stitchTiles=%22stitch%22/%3E%3C/filter%3E%3Crect width=%22100%25%22 height=%22100%25%22 filter=%22url(%23noiseFilter)%22/%3E%3C/svg%3E')] opacity-20 pointer-events-none" />
       <div className="absolute top-[-20%] left-[-10%] w-[60%] h-[60%] bg-blue-600/10 blur-[150px] rounded-full animate-pulse" />
@@ -348,10 +350,10 @@ export default function DesktopGame() {
             <Activity className="w-6 h-6 md:w-8 md:h-8 text-white group-hover:scale-110 transition-transform" />
           </div>
           <div>
-            <h1 className="text-xl md:text-3xl font-black tracking-tight text-white/90 uppercase leading-none text-center">pktgym <span className="text-orange-500 text-outline">CORE</span></h1>
+            <h1 className="text-xl md:text-3xl font-bold tracking-tight text-white/90 uppercase leading-none text-center">pktgym <span className="text-orange-500 text-outline">CORE</span></h1>
             <div className="flex items-center gap-2 mt-1">
               <div className="w-1.5 h-1.5 md:w-2 md:h-2 rounded-full bg-green-500 animate-pulse shadow-[0_0_10px_#22c55e]" />
-              <span className="text-[8px] md:text-[10px] font-black text-white/30 uppercase tracking-[0.2em] md:tracking-[0.3em]">System Uplink Active</span>
+              <span className="text-[8px] md:text-[10px] font-bold text-white/30 uppercase tracking-[0.2em] md:tracking-[0.3em]">System Uplink Active</span>
             </div>
           </div>
         </div>
@@ -365,7 +367,7 @@ export default function DesktopGame() {
                 className="hidden lg:flex px-6 py-3 bg-white/5 border border-white/10 rounded-[1.5rem] items-center gap-3 backdrop-blur-2xl"
               >
                 <Smartphone className="w-4 h-4 text-green-400" />
-                <span className="text-xs font-black text-white/70 uppercase tracking-widest">Link Synchronized</span>
+                <span className="text-xs font-bold text-white/70 uppercase tracking-widest">Link Synchronized</span>
               </motion.div>
             )}
           </AnimatePresence>
@@ -402,7 +404,7 @@ export default function DesktopGame() {
             exit={{ opacity: 0, x: -20 }}
             className="absolute left-4 top-24 md:left-8 md:top-32 z-50 bg-black/80 border border-white/10 p-4 rounded-2xl backdrop-blur-md text-xs font-mono text-green-400 space-y-2 pointer-events-none shadow-2xl max-w-[200px] md:max-w-xs break-all"
           >
-            <p className="text-orange-500 font-black uppercase tracking-widest mb-2 border-b border-white/10 pb-2">IMU Telemetry</p>
+            <p className="text-orange-500 font-bold uppercase tracking-widest mb-2 border-b border-white/10 pb-2">IMU Telemetry</p>
             <p>Accel X: {debugData.accel?.x?.toFixed(2)}</p>
             <p>Accel Y: {debugData.accel?.y?.toFixed(2)}</p>
             <p>Accel Z: {debugData.accel?.z?.toFixed(2)}</p>
@@ -423,7 +425,7 @@ export default function DesktopGame() {
       </AnimatePresence>
 
       {/* Main Experience Engine */}
-      <main className="flex-1 flex flex-col items-center justify-center p-4 md:p-6 relative z-10 overflow-y-auto mt-20 md:mt-0 no-scrollbar">
+      <main className="flex-1 flex flex-col items-center justify-center p-4 md:p-6 relative z-10 overflow-y-auto mt-24 md:mt-32 no-scrollbar">
         <AnimatePresence mode="wait">
           {flowState === 'pairing' && (
             <motion.div
@@ -437,26 +439,50 @@ export default function DesktopGame() {
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-10 md:gap-16 items-center w-full">
                 <div className="space-y-6 md:space-y-10 text-center lg:text-left">
                   <div className="space-y-4 md:space-y-6">
-                    <h2 className="text-6xl sm:text-7xl md:text-8xl font-black tracking-tighter leading-[0.85] uppercase italic">
-                      SYNC YOUR <br />
-                      <span className="text-orange-500">GRIT.</span>
+                    <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-orange-500/10 border border-orange-500/20 text-orange-500 text-xs font-bold tracking-widest uppercase">
+                      <Zap className="w-3.5 h-3.5" />
+                      Next-Gen Fitness
+                    </div>
+                    <h2 className="text-5xl sm:text-6xl md:text-7xl font-bold tracking-tight leading-[0.9] uppercase text-white">
+                      YOUR BODY IS <br />
+                      <span className="text-orange-500">THE CONTROLLER.</span>
                     </h2>
-                    <p className="text-lg md:text-2xl text-white/40 font-bold uppercase tracking-wide max-w-md mx-auto lg:mx-0 leading-tight italic">
-                      Turn your phone into an elite motion tracking core.
+                    <p className="text-lg md:text-xl text-white/60 font-medium max-w-md mx-auto lg:mx-0 leading-relaxed">
+                      Experience immersive workouts using advanced AI motion tracking. No expensive hardware required.
                     </p>
                   </div>
                   
-                  <div className="space-y-3 md:space-y-4">
-                    <div className="flex items-center gap-4 md:gap-5 p-4 md:p-6 rounded-[2rem] md:rounded-[2.5rem] bg-white/5 border border-white/10 backdrop-blur-2xl">
-                      <div className="w-10 h-10 md:w-14 md:h-14 rounded-full bg-blue-500/20 flex items-center justify-center shrink-0 border border-blue-500/20">
-                        <Wifi className="w-5 h-5 md:w-7 md:h-7 text-blue-400" />
-                      </div>
-                      <p className="text-xs md:text-sm font-black text-white/60 uppercase tracking-wider leading-snug italic text-left">Establish shared local Wi-Fi between devices.</p>
-                    </div>
+                  <div className="space-y-4 pt-4">
+                <button
+                  onClick={() => setInputType('imu')}
+                  className={cn("w-full p-5 md:p-6 rounded-3xl border flex items-start gap-5 transition-all text-left group", inputType === 'imu' || !inputType ? "bg-orange-500/10 border-orange-500/50 shadow-[0_0_30px_rgba(249,115,22,0.15)]" : "bg-white/5 border-white/10 hover:bg-white/10 hover:border-white/20")}
+                >
+                  <div className={cn("p-3 rounded-2xl shrink-0 transition-colors", inputType === 'imu' || !inputType ? "bg-orange-500/20 text-orange-500" : "bg-white/5 text-white/40 group-hover:text-white/80")}>
+                    <Smartphone className="w-6 h-6 md:w-8 md:h-8" />
                   </div>
+                  <div className="space-y-1">
+                    <h3 className="text-lg md:text-xl font-bold text-white tracking-tight">Phone Controller</h3>
+                    <p className="text-sm text-white/50 leading-relaxed">Hold your phone or place it in your pocket. High-precision IMU sensor tracking.</p>
+                  </div>
+                </button>
+                
+                <button
+                  onClick={() => { setInputType('camera'); setFlowState('menu'); audio.playClick(); }}
+                  className={cn("w-full p-5 md:p-6 rounded-3xl border flex items-start gap-5 transition-all text-left group", inputType === 'camera' ? "bg-blue-500/10 border-blue-500/50 shadow-[0_0_30px_rgba(59,130,246,0.15)]" : "bg-white/5 border-white/10 hover:bg-white/10 hover:border-white/20")}
+                >
+                  <div className={cn("p-3 rounded-2xl shrink-0 transition-colors", inputType === 'camera' ? "bg-blue-500/20 text-blue-400" : "bg-white/5 text-white/40 group-hover:text-white/80")}>
+                    <Camera className="w-6 h-6 md:w-8 md:h-8" />
+                  </div>
+                  <div className="space-y-1">
+                    <h3 className="text-lg md:text-xl font-bold text-white tracking-tight">AI Web Camera</h3>
+                    <p className="text-sm text-white/50 leading-relaxed">Play hands-free. Uses your webcam and advanced skeletal tracking.</p>
+                  </div>
+                </button>
+              </div>
+
                 </div>
 
-                <div className="relative group mx-auto lg:ml-auto lg:mr-0 w-full max-w-[280px] md:max-w-none md:w-auto mt-4 md:mt-0">
+                <div className={cn("relative group transition-opacity mx-auto lg:ml-auto lg:mr-0 w-full max-w-[280px] md:max-w-none md:w-auto mt-4 md:mt-0", inputType === 'camera' ? 'opacity-20 pointer-events-none' : 'opacity-100')}>
                   <div className="absolute inset-0 bg-orange-500/10 blur-[60px] md:blur-[120px] rounded-full group-hover:bg-orange-500/20 transition-all duration-1000" />
                   <div className="relative bg-[#0f172a]/80 backdrop-blur-3xl p-4 md:p-12 rounded-[2rem] md:rounded-[4.5rem] border border-white/10 shadow-3xl flex flex-col items-center gap-6 md:gap-12">
                     <div className="p-4 md:p-10 bg-white rounded-2xl md:rounded-[3.5rem] shadow-2xl relative group-hover:scale-[1.04] transition-transform duration-700 ease-out w-full flex justify-center">
@@ -465,14 +491,14 @@ export default function DesktopGame() {
                       ) : (
                         <div className="w-full max-w-[150px] md:max-w-[280px] aspect-square flex flex-col items-center justify-center gap-4 md:gap-6">
                           <RefreshCw className="w-8 h-8 md:w-12 md:h-12 text-neutral-300 animate-spin" />
-                          <p className="text-[8px] md:text-[10px] font-black text-neutral-400 uppercase tracking-[0.3em] md:tracking-[0.4em] text-center px-4 md:px-10 leading-relaxed italic">Allocating <br/>Network Stack</p>
+                          <p className="text-[8px] md:text-[10px] font-bold text-neutral-400 uppercase tracking-[0.3em] md:tracking-[0.4em] text-center px-4 md:px-10 leading-relaxed">Allocating <br/>Network Stack</p>
                         </div>
                       )}
                     </div>
                     <div className="text-center space-y-2 md:space-y-4 w-full">
-                      <p className="text-[8px] md:text-[10px] uppercase tracking-[0.4em] md:tracking-[0.6em] text-white/20 font-black italic leading-none">Encrypted Uplink</p>
+                      <p className="text-[8px] md:text-[10px] uppercase tracking-[0.4em] md:tracking-[0.6em] text-white/20 font-bold leading-none">Encrypted Uplink</p>
                       <div className="bg-black/40 py-3 px-4 md:py-6 md:px-12 rounded-[1.5rem] md:rounded-[2.5rem] border border-white/5 shadow-inner">
-                        <p className="text-3xl md:text-6xl font-mono tracking-[0.4em] md:tracking-[0.6em] text-orange-500 font-bold ml-[0.4em] md:ml-[0.6em] drop-shadow-[0_0_20px_rgba(249,115,22,0.5)] leading-none italic">{roomId || '----'}</p>
+                        <p className="text-3xl md:text-6xl font-mono tracking-[0.4em] md:tracking-[0.6em] text-orange-500 font-bold ml-[0.4em] md:ml-[0.6em] drop-shadow-[0_0_20px_rgba(249,115,22,0.5)] leading-none">{roomId || '----'}</p>
                       </div>
                     </div>
                   </div>
@@ -490,8 +516,8 @@ export default function DesktopGame() {
               className="flex flex-col items-center gap-10 md:gap-16 w-full max-w-7xl px-4 mt-24 lg:mt-32"
             >
               <div className="text-center space-y-2 md:space-y-4">
-                <h2 className="text-5xl md:text-7xl lg:text-[9rem] font-black tracking-tighter text-white uppercase italic leading-[0.8] mb-4">Target <span className="text-orange-500">Logic.</span></h2>
-                <p className="text-sm md:text-xl lg:text-2xl text-white/30 font-black uppercase tracking-[0.4em] md:tracking-[0.6em] italic leading-none">Module parameters synchronized</p>
+                <h2 className="text-5xl md:text-7xl lg:text-[9rem] font-bold tracking-tighter text-white uppercase leading-[0.8] mb-4">Target <span className="text-orange-500">Logic.</span></h2>
+                <p className="text-sm md:text-xl lg:text-2xl text-white/30 font-bold uppercase tracking-[0.4em] md:tracking-[0.6em] leading-none">Module parameters synchronized</p>
               </div>
               
               <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-6 md:gap-8 w-full pb-20">
@@ -515,11 +541,11 @@ export default function DesktopGame() {
                       <div className={cn("p-5 md:p-7 rounded-[2rem] md:rounded-[2.5rem] mb-8 md:mb-12 border-2 transition-all duration-700 group-hover:rotate-[15deg] group-hover:scale-110 shadow-3xl", data.colorClass, isFocused ? "rotate-[15deg] scale-110" : "")}>
                         <Icon className="w-10 h-10 md:w-14 md:h-14" />
                       </div>
-                      <h3 className={cn("text-3xl md:text-4xl lg:text-5xl font-black mb-3 md:mb-4 tracking-tight uppercase leading-none", isFocused ? "text-orange-500" : "")}>{data.name}</h3>
-                      <p className="text-white/40 font-black text-[9px] md:text-[10px] uppercase tracking-[0.15em] md:tracking-[0.2em] leading-relaxed md:leading-loose max-w-[200px] md:max-w-[220px]">{data.description}</p>
+                      <h3 className={cn("text-3xl md:text-4xl lg:text-5xl font-bold mb-3 md:mb-4 tracking-tight uppercase leading-none", isFocused ? "text-orange-500" : "")}>{data.name}</h3>
+                      <p className="text-white/40 font-bold text-[9px] md:text-[10px] uppercase tracking-[0.15em] md:tracking-[0.2em] leading-relaxed md:leading-loose max-w-[200px] md:max-w-[220px]">{data.description}</p>
                       
                       <div className={cn("mt-8 md:mt-12 flex items-center gap-3 md:gap-4 transition-all duration-500", isFocused ? "text-white" : "text-white/20 group-hover:text-white")}>
-                        <span className="text-[10px] md:text-xs font-black uppercase tracking-[0.3em] md:tracking-[0.4em] leading-none">Initiate Session</span>
+                        <span className="text-[10px] md:text-xs font-bold uppercase tracking-[0.3em] md:tracking-[0.4em] leading-none">Initiate Session</span>
                         <ArrowRight className={cn("w-5 h-5 md:w-6 md:h-6 transition-transform duration-500", isFocused ? "translate-x-0 text-orange-500" : "translate-x-[-8px] group-hover:translate-x-0")} />
                       </div>
                       
@@ -546,12 +572,12 @@ export default function DesktopGame() {
               <div className="text-center space-y-4">
                 <div className="flex items-center justify-center gap-3 mb-6">
                   <Activity className="w-8 h-8 text-orange-500 animate-pulse" />
-                  <p className="text-xl text-orange-500 font-black uppercase tracking-[0.4em] italic leading-none">Sensor Calibration</p>
+                  <p className="text-xl text-orange-500 font-bold uppercase tracking-[0.4em] leading-none">Sensor Calibration</p>
                 </div>
-                <h2 className="text-6xl md:text-8xl font-black tracking-tighter text-white uppercase italic leading-[0.85]">
+                <h2 className="text-6xl md:text-8xl font-bold tracking-tighter text-white uppercase leading-[0.85]">
                   Perform <span className="text-orange-500">Move</span>
                 </h2>
-                <p className="text-lg text-white/50 font-bold uppercase tracking-widest italic max-w-xl mx-auto mt-4">
+                <p className="text-lg text-white/50 font-bold uppercase tracking-widest max-w-xl mx-auto mt-4">
                   Follow the demo movement until the gauge below is filled to tune the IMU data to your preference.
                 </p>
               </div>
@@ -561,10 +587,10 @@ export default function DesktopGame() {
                   <div className="absolute inset-0 bg-gradient-to-b from-orange-500/5 to-transparent pointer-events-none" />
                   
                   <div className="flex justify-between items-center w-full px-8">
-                    <p className="text-2xl text-white/40 font-black uppercase tracking-widest italic">
+                    <p className="text-2xl text-white/40 font-bold uppercase tracking-widest">
                       Move {currentCalibIndex + 1} / {calibrationMoves.length}
                     </p>
-                    <p className="text-4xl text-white font-black uppercase tracking-tighter italic">
+                    <p className="text-4xl text-white font-bold uppercase tracking-tighter">
                       {calibrationMoves[currentCalibIndex].replace('_', ' ')}
                     </p>
                   </div>
@@ -575,8 +601,8 @@ export default function DesktopGame() {
 
                   <div className="w-full max-w-2xl space-y-4 z-10">
                     <div className="flex justify-between items-end">
-                      <p className="text-sm font-black text-white/60 uppercase tracking-[0.3em] italic">Calibration Data</p>
-                      <p className="text-3xl font-black text-orange-500 italic tabular-nums">{Math.min(Math.round(calibrationProgress), 100)}%</p>
+                      <p className="text-sm font-bold text-white/60 uppercase tracking-[0.3em]">Calibration Data</p>
+                      <p className="text-3xl font-bold text-orange-500 tabular-nums">{Math.min(Math.round(calibrationProgress), 100)}%</p>
                     </div>
                     <div className="w-full h-8 bg-black/50 rounded-full overflow-hidden border border-white/10 shadow-inner p-1">
                       <motion.div 
@@ -610,27 +636,27 @@ export default function DesktopGame() {
                 <motion.div 
                   animate={{ scale: [1, 1.3, 1] }}
                   transition={{ duration: 0.4, repeat: Infinity }}
-                  className="absolute -right-8 -top-8 w-20 h-20 bg-blue-600 rounded-full flex items-center justify-center border-[10px] border-[#020617] font-black text-3xl italic italic"
+                  className="absolute -right-8 -top-8 w-20 h-20 bg-blue-600 rounded-full flex items-center justify-center border-[10px] border-[#020617] font-bold text-3xl"
                 >
                   !
                 </motion.div>
               </div>
               
               <div className="space-y-8">
-                <h2 className="text-4xl font-black uppercase tracking-[0.6em] text-orange-500 italic italic drop-shadow-[0_0_30px_rgba(249,115,22,0.4)] leading-none">Command Pulse</h2>
-                <h3 className="text-[9rem] md:text-[13rem] font-black uppercase tracking-tighter leading-[0.75] italic italic text-white drop-shadow-3xl">
+                <h2 className="text-4xl font-bold uppercase tracking-[0.6em] text-orange-500 drop-shadow-[0_0_30px_rgba(249,115,22,0.4)] leading-none">Command Pulse</h2>
+                <h3 className="text-[9rem] md:text-[13rem] font-bold uppercase tracking-tighter leading-[0.75] text-white drop-shadow-3xl">
                   {GAME_MODES[activeSubMode].name}
                 </h3>
               </div>
 
               <div className="p-16 rounded-[5rem] bg-white/5 border-4 border-white/10 backdrop-blur-[80px] shadow-3xl">
-                <p className="text-4xl md:text-6xl font-black text-white leading-[0.9] uppercase tracking-tight italic italic drop-shadow-lg">
+                <p className="text-4xl md:text-6xl font-bold text-white leading-[0.9] uppercase tracking-tight drop-shadow-lg">
                   {GAME_MODES[activeSubMode].placement}
                 </p>
               </div>
 
               <div className="mt-8 flex flex-col items-center gap-8 w-full">
-                 <div className="text-[15rem] font-black tabular-nums text-white/5 italic italic leading-none drop-shadow-2xl">
+                 <div className="text-[15rem] font-bold tabular-nums text-white/5 leading-none drop-shadow-2xl">
                   {transitionTime}
                 </div>
                 <div className="w-full max-w-md h-3 bg-white/5 rounded-full overflow-hidden border-2 border-white/5 shadow-inner">
@@ -656,14 +682,14 @@ export default function DesktopGame() {
                 <div className="space-y-4">
                   <div className="flex items-center gap-4">
                     <div className="w-4 h-4 rounded-full bg-orange-500 shadow-[0_0_20px_#f97316]" />
-                    <p className="text-xs font-black tracking-[0.6em] text-white/30 uppercase italic italic leading-none">Impact Force</p>
+                    <p className="text-xs font-bold tracking-[0.6em] text-white/30 uppercase leading-none">Impact Force</p>
                   </div>
                   <motion.p
                     key={score}
                     initial={{ scale: 1.2, color: '#f97316' }}
                     animate={{ scale: 1, color: '#ffffff' }}
                     transition={{ type: 'spring', stiffness: 500 }}
-                    className="text-9xl md:text-[14rem] font-black tabular-nums tracking-tighter italic italic leading-none"
+                    className="text-9xl md:text-[14rem] font-bold tabular-nums tracking-tighter leading-none"
                   >
                     {score.toLocaleString()}
                   </motion.p>
@@ -673,7 +699,7 @@ export default function DesktopGame() {
                   <motion.div 
                     initial={{ y: -30, opacity: 0 }}
                     animate={{ y: 0, opacity: 1 }}
-                    className="px-14 py-6 rounded-[3rem] bg-orange-500/10 border-[3px] border-orange-500/60 text-orange-500 font-black uppercase tracking-[0.5em] text-sm shadow-[0_0_80px_rgba(249,115,22,0.3)] backdrop-blur-3xl italic italic"
+                    className="px-14 py-6 rounded-[3rem] bg-orange-500/10 border-[3px] border-orange-500/60 text-orange-500 font-bold uppercase tracking-[0.5em] text-sm shadow-[0_0_80px_rgba(249,115,22,0.3)] backdrop-blur-3xl"
                   >
                     {GAME_MODES[activeSubMode].name}
                   </motion.div>
@@ -694,24 +720,31 @@ export default function DesktopGame() {
 
                 <div className="text-right space-y-4">
                    <div className="flex items-center justify-end gap-4 text-orange-500">
-                    <p className="text-xs font-black tracking-[0.6em] text-white/30 uppercase italic italic leading-none">Momentum</p>
+                    <p className="text-xs font-bold tracking-[0.6em] text-white/30 uppercase leading-none">Momentum</p>
                     <Zap className="w-6 h-6 fill-orange-500 drop-shadow-[0_0_15px_#f97316]" />
                   </div>
                   <motion.p
                     key={combo}
                     animate={{ scale: combo > 0 ? [1, 1.4, 1] : 1 }}
                     className={cn(
-                      "text-8xl md:text-[12rem] font-black tabular-nums tracking-tighter italic italic transition-colors leading-none",
+                      "text-8xl md:text-[12rem] font-bold tabular-nums tracking-tighter transition-colors leading-none",
                       combo > 4 ? 'text-orange-500 drop-shadow-[0_0_50px_rgba(249,115,22,0.8)]' : 'text-white'
                     )}
                   >
-                    {combo}<span className="text-[3rem] ml-4 text-white/20 not-italic font-black">X</span>
+                    {combo}<span className="text-[3rem] ml-4 text-white/20 not-font-bold">X</span>
                   </motion.p>
                 </div>
               </div>
 
               <div className="relative flex items-center justify-center flex-1 w-full perspective-3000 overflow-visible">
                 <GameAvatar targetMove={targetMove} feedback={feedback} />
+                {inputType === 'camera' && (
+                  <CameraView 
+                    activeMode={activeSubMode} 
+                    onMoveDetected={handleCameraMove} 
+                    isActive={true} 
+                  />
+                )}
 
                 <AnimatePresence mode="popLayout">
                   {feedback && (
@@ -722,7 +755,7 @@ export default function DesktopGame() {
                       exit={{ opacity: 0, scale: 3, filter: 'blur(40px)' }}
                       transition={{ type: 'spring', bounce: 0.4, duration: 0.7 }}
                       className={cn(
-                        "absolute z-30 text-[10rem] md:text-[18rem] font-black tracking-[calc(-0.05em)] uppercase italic italic px-40 py-24 rounded-[8rem] border-[24px] backdrop-blur-[120px] shadow-[0_0_200px_rgba(0,0,0,0.8)] pointer-events-none",
+                        "absolute z-30 text-[10rem] md:text-[18rem] font-bold tracking-[calc(-0.05em)] uppercase px-40 py-24 rounded-[8rem] border-[24px] backdrop-blur-[120px] shadow-[0_0_200px_rgba(0,0,0,0.8)] pointer-events-none",
                         feedback === 'PERFECT' 
                           ? 'text-green-400 border-green-500/50 bg-green-500/20 shadow-green-500/40' 
                           : feedback === 'MISS'
@@ -739,10 +772,10 @@ export default function DesktopGame() {
               <div className="pb-24 w-full flex justify-center">
                 <button
                   onClick={stopWorkout}
-                  className="group px-16 py-8 rounded-[3.5rem] bg-white/5 hover:bg-white/[0.08] font-black text-white/20 hover:text-white transition-all border-[3px] border-white/5 flex items-center gap-8 active:scale-90 shadow-4xl backdrop-blur-3xl"
+                  className="group px-16 py-8 rounded-[3.5rem] bg-white/5 hover:bg-white/[0.08] font-bold text-white/20 hover:text-white transition-all border-[3px] border-white/5 flex items-center gap-8 active:scale-90 shadow-4xl backdrop-blur-3xl"
                 >
                   <RefreshCw className="w-8 h-8 group-hover:rotate-180 transition-transform duration-1000 ease-in-out text-orange-500" />
-                  <span className="uppercase tracking-[0.8em] text-xs font-black italic italic leading-none">ABORT TRAINING PROTOCOL</span>
+                  <span className="uppercase tracking-[0.8em] text-xs font-bold leading-none">ABORT TRAINING PROTOCOL</span>
                 </button>
               </div>
             </motion.div>

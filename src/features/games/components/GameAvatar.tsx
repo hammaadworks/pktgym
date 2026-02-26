@@ -129,7 +129,7 @@ export default function GameAvatar({ targetMove, feedback }: GameAvatarProps) {
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: -180 }}
             exit={{ opacity: 0, y: -200 }}
-            className="absolute top-1/2 text-5xl font-black uppercase tracking-tighter text-white drop-shadow-[0_0_20px_#f97316] italic z-20"
+            className="absolute top-1/2 text-5xl font-bold uppercase tracking-tighter text-white drop-shadow-[0_0_20px_#f97316] italic z-20"
           >
             {targetMove.replace('_', ' ')}
           </motion.div>
