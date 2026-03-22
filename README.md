@@ -56,7 +56,7 @@ pktgym is built with a modular, feature-based architecture:
 
 - **Mobile Controller:** A "dumb" sensor pipeline that streams raw X, Y, Z data at 60Hz.
 - **Desktop Game:** The host environment that runs the game loop, validates incoming data with **Zod**, and runs the motion detection engine.
-- **Bridge Layer:** A direct WebRTC data channel brokered by PeerJS.
+- **Bridge Layer:** A dual-connection data channel using PeerJS (WebRTC) for the web version and local WebSockets for the Tauri offline app.
 
 For a deep dive into the system design, see [ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
@@ -69,3 +69,4 @@ We love contributions! pktgym is built for the community. Whether you want to ad
 ## 📄 License
 
 Distributed under the MIT License. See `LICENSE` for more information.
+See `LICENSE` for more information.
