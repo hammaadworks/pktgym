@@ -25,6 +25,8 @@ export function useDesktopPeer(onMenuAction: (data: any) => void, onMotionData: 
 
   useEffect(() => {
     setMounted(true);
+    if (typeof window !== 'undefined' && (window as any).__TAURI__) return; // Skip if Tauri
+
     const newRoom = Math.floor(1000 + Math.random() * 9000).toString();
     setRoomId(newRoom);
 

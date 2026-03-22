@@ -3,14 +3,14 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useSearchParams } from 'next/navigation';
+import { useSearchParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Activity, Smartphone, AlertCircle, Wifi, WifiOff, XCircle, Power, RefreshCw, ChevronUp, ChevronDown, ChevronLeft, ChevronRight, Target } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { useMobilePeer } from '@/features/connection/hooks/useMobilePeer';
+import { useMobileConnection } from '@/features/connection/hooks/useMobileConnection';
 
 export default function MobileController() {
-  const searchParams = useSearchParams();
+  const [searchParams] = useSearchParams();
   const roomId = searchParams.get('room');
   
   const [isStreaming, setIsStreaming] = useState(false);
@@ -30,7 +30,7 @@ export default function MobileController() {
     });
   };
 
-  const { mounted, connectionStatus, error, setError, sendData } = useMobilePeer(roomId, handleStateUpdate);
+  const { mounted, connectionStatus, error, setError, sendData } = useMobileConnection(roomId, handleStateUpdate);
 
   useEffect(() => {
     // Prevent scrolling

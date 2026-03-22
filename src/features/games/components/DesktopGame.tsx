@@ -12,7 +12,7 @@ import { Settings, RefreshCw, Activity, ArrowRight, Zap, Target, Dumbbell, Shiel
 import { cn } from '@/lib/utils';
 import { audio } from '@/lib/audio/audio';
 import GameAvatar from './GameAvatar';
-import { useDesktopPeer } from '@/features/connection/hooks/useDesktopPeer';
+import { useDesktopConnection } from '@/features/connection/hooks/useDesktopConnection';
 
 type ExtendedMode = GameMode | 'power_workout';
 
@@ -113,7 +113,7 @@ export default function DesktopGame() {
     }
   }, [config.LISTENING_WINDOW_MS, isDebug]);
 
-  const { mounted, roomId, mobileConnected, sendStateUpdate } = useDesktopPeer(handleMenuAction, handleMotionData);
+  const { mounted, roomId, mobileConnected, sendStateUpdate } = useDesktopConnection(handleMenuAction, handleMotionData);
 
   useEffect(() => {
     flowStateRef.current = flowState;
@@ -311,7 +311,21 @@ export default function DesktopGame() {
 
   // QR Link Calculation
   const protocol = mounted ? window.location.protocol : 'http:';
-  const host = mounted ? window.location.host : '';
+  let host = mounted ? window.location.host : '';
+  
+  // If roomId is a ws:// URL containing an IP, extract the hostname to replace localhost
+  if (roomId.startsWith('ws://')) {
+    try {
+      const wsUrlObj = new URL(roomId);
+      if (wsUrlObj.hostname && host.includes('localhost')) {
+        // Keep the port from the original host if any, but change the hostname
+        host = host.replace('localhost', wsUrlObj.hostname).replace('127.0.0.1', wsUrlObj.hostname);
+      }
+    } catch (e) {
+      // Ignore URL parsing errors
+    }
+  }
+
   const connectUrl = (mounted && roomId && host) ? `${protocol}//${host}/controller?room=${roomId}` : '';
 
   if (!mounted) return (
@@ -747,39 +761,6 @@ export default function DesktopGame() {
         )}
       </AnimatePresence>
 
-      <style jsx global>{`
-        body {
-          background-color: #020617;
-          overflow: hidden;
-        }
-
-        .text-outline {
-          -webkit-text-stroke: 2px rgba(249, 115, 22, 0.5);
-        }
-        
-        .custom-scrollbar::-webkit-scrollbar { width: 4px; }
-        .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
-        .custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(249, 115, 22, 0.4); border-radius: 10px; }
-        
-        .no-scrollbar::-webkit-scrollbar { display: none; }
-        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
-        
-        .perspective-1000 { perspective: 1000px; }
-        .perspective-2000 { perspective: 2000px; }
-        .perspective-3000 { perspective: 3000px; }
-
-        ::selection {
-          background: rgba(249, 115, 22, 0.4);
-          color: white;
-        }
-
-        .shadow-3xl {
-            box-shadow: 0 40px 100px -20px rgba(0,0,0,0.8);
-        }
-        .shadow-4xl {
-            box-shadow: 0 60px 150px -30px rgba(0,0,0,0.9);
-        }
-      `}</style>
     </div>
   );
 }
