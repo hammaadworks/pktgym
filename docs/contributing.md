@@ -50,7 +50,7 @@ Move thresholds are configurable in `config.ts`. We use an **Adaptive Threshold*
 If you need to send new types of data between the phone and desktop:
 1. Update `src/features/connection/schema.ts` with the new Zod schema.
 2. Update the `PeerMessageSchema` union.
-3. Handle the new message type in `useDesktopPeer.ts` or `useMobilePeer.ts`.
+3. Handle the new message type in the connection hooks (`useDesktopConnection.ts`, `useDesktopSocket.ts`, `useDesktopPeer.ts`, or `useMobileConnection.ts`).
 
 **Why Zod?** It ensures that both the mobile and desktop sides are always in sync. If you change the schema, the TypeScript compiler will guide you through the necessary updates on both sides.
 

@@ -82,11 +82,14 @@ This prevents malformed data from reaching the motion engine, making the system 
 
 ## 4. Connection Management & Resilience
 
-### Offline-First Philosophy
-While initial signaling requires an internet connection to reach the PeerJS broker, the actual gameplay is **local**. If your internet goes down but your local Wi-Fi remains active, the P2P WebRTC connection will persist.
+### Dual-Connection Architecture (Online & Offline)
+**pktgym** employs a hybrid connection strategy to ensure a seamless experience regardless of internet availability:
+
+1. **Online Mode (Web Browser):** When played directly in a browser (e.g., Chrome, Safari), the system uses **PeerJS (WebRTC)**. Both the phone and desktop reach out to the public PeerJS broker to exchange local IP addresses, establishing a highly performant peer-to-peer data channel.
+2. **Offline Mode (Tauri Desktop App):** For users in environments with poor or no internet (like basement gyms), we provide a downloadable **Tauri Desktop App**. In this mode, the Rust backend automatically spins up a local **WebSocket server** (Port 8899) and exposes its local IP address via the QR code. The mobile controller intelligently detects the `ws://` protocol and connects directly via native WebSockets, completely bypassing the need for cloud signaling.
 
 ### Connection Health
-- **Active Heartbeat:** PeerJS maintains the connection state.
+- **Active Heartbeat:** Both PeerJS and native WebSockets maintain the connection state.
 - **Reactive UI:** Both the Mobile and Desktop interfaces react immediately to a `disconnected` or `close` event, allowing the user to pause and re-pair if necessary.
 - **Prefixing:** All PeerJS IDs are prefixed with `pktgym-` to avoid collisions on public signaling servers.
 
