@@ -1,37 +1,33 @@
-.PHONY: install dev start-frontend start-bridge clean
+.PHONY: install dev build start clean
 
-# Install dependencies for both frontend and bridge-server
+# Use pnpm as the primary package manager
+PM = pnpm
+PORT = 8899
+
+# Install dependencies
 install:
-	@echo "Installing frontend dependencies..."
-	cd frontend && npm install
-	@echo "Installing bridge-server dependencies..."
-	cd bridge-server && npm install
+	@echo "Installing dependencies using pnpm..."
+	$(PM) install
 	@echo "All dependencies installed successfully!"
 
-# Run both the frontend and bridge-server concurrently
+# Run the Next.js frontend development server
 dev:
-	@echo "Starting SweatSnap MVP (Frontend & Bridge Server)..."
-	@make -j 2 start-frontend start-bridge
+	@echo "Starting pktgym on port $(PORT)..."
+	PORT=$(PORT) $(PM) run dev
 
-# Run with a tunnel (ngrok). Usage: make tunnel SOCKET_URL=https://your-url.ngrok.io
-tunnel:
-	@echo "Starting SweatSnap with Tunnel URL: $(SOCKET_URL)"
-	@NEXT_PUBLIC_SOCKET_URL=$(SOCKET_URL) make dev
+# Build the application for production
+build:
+	@echo "Building application..."
+	$(PM) run build
 
-# Start the Next.js frontend (runs on port 3000)
-start-frontend:
-	@echo "Starting Frontend..."
-	cd frontend && npm run dev
-
-# Start the Socket.io bridge server (runs on port 3001)
-start-bridge:
-	@echo "Starting Bridge Server..."
-	cd bridge-server && npm start
+# Start the production server
+start:
+	@echo "Starting production server on port $(PORT)..."
+	PORT=$(PORT) $(PM) run start
 
 # Clean node_modules and Next.js build cache
 clean:
 	@echo "Cleaning up node_modules and build artifacts..."
-	rm -rf frontend/node_modules
-	rm -rf frontend/.next
-	rm -rf bridge-server/node_modules
+	rm -rf node_modules
+	rm -rf .next
 	@echo "Clean complete!"
